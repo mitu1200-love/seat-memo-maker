@@ -131,6 +131,28 @@
   #fDate{cursor:pointer;}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 
+  /* ---- スマホ最適化 ---- */
+  @media (max-width: 640px){
+    body{padding:18px 12px 44px;}
+    .stage-frame{padding:14px;border-radius:14px;}
+    .card{padding:16px;}
+    /* イベント日時と表示名が窮屈になるので縦積みにする */
+    .row2{grid-template-columns:1fr;gap:0;}
+    .toolbar{gap:8px;}
+    .status-pill{max-width:100%;}
+    .field input{font-size:16px;padding:11px 12px;}  /* 16px未満だとiOSで拡大される */
+    #fDate{min-height:44px;}
+    .btnrow{gap:8px;}
+    .btnrow button{flex:1 1 calc(50% - 4px);min-height:46px;padding:12px 10px;}
+    .pin-color-row{gap:7px;}
+    .swatch-btn{width:26px;height:26px;}
+    #pinColorCustom{width:30px;height:30px;}
+    .map-scroll{max-height:56vh;}
+    header p{font-size:12px;}
+    .hint-strip, .hint{font-size:11px;}
+    footer{font-size:10.5px;}
+  }
+
   .selection-box{
     background:#0a1530;border:1px dashed rgba(255,179,71,.5);border-radius:10px;
     padding:12px 14px;font-size:13px;margin-bottom:14px;min-height:20px;transition:all .25s ease;
@@ -246,8 +268,9 @@
         <button class="primary" id="postXBtn">Xに投稿</button>
         <button class="ghost" id="clearSelBtn">選択解除</button>
       </div>
-      <p class="hint">「全体を保存」は座席表の全体図、「表示範囲を保存」は今画面に見えている範囲をそのまま（拡大したまま拡大された状態で）保存します。<br>
-      画像共有に対応した環境（主にスマホのブラウザ）では、Xに投稿すると全体図がそのまま投稿画面に添付されます。非対応の環境（主にPCのブラウザ）では画像がダウンロードされ、投稿画面が開くので手動で添付してください。</p>
+      <p class="hint">「全体を保存」は座席表の全体図、「表示範囲を保存」は今画面に見えている範囲をそのまま（拡大した状態で）保存します。<br>
+      スマホでは保存ボタンを押すと共有メニューが開くので、「画像を保存」を選んでください。<br>
+      「Xに投稿」は全体図と表示範囲の2枚を投稿画面に添付します。PCでは2枚がダウンロードされ、投稿画面が開くので手動で添付してください。</p>
     </div>
   </div>
 
@@ -735,21 +758,6 @@ function buildImage(onDone, mode){
   img.src = 'data:image/svg+xml;base64,'+svg64;
 }
 
-function downloadDataUrl(dataUrl, filename){
-  const a = document.createElement('a');
-  a.href = dataUrl; a.download = filename || (safeFileStem()+'.png'); a.click();
-}
-
-document.getElementById('saveFullBtn').addEventListener('click', ()=>{
-  if(!selected){ alert('先に座席表をダブルクリックしてピンを立ててください。'); return; }
-  buildImage((d)=>downloadDataUrl(d, safeFileStem()+'.png'), 'full');
-});
-
-document.getElementById('saveViewBtn').addEventListener('click', ()=>{
-  if(!selected){ alert('先に座席表をダブルクリックしてピンを立ててください。'); return; }
-  buildImage((d)=>downloadDataUrl(d, safeFileStem()+'-zoom.png'), 'view');
-});
-
 function dataUrlToFile(dataUrl, filename){
   const arr = dataUrl.split(',');
   const mime = arr[0].match(/:(.*?);/)[1];
@@ -760,26 +768,120 @@ function dataUrlToFile(dataUrl, filename){
   return new File([u8arr], filename, {type:mime});
 }
 
-document.getElementById('postXBtn').addEventListener('click', ()=>{
-  if(!selected){ alert('先に座席表をダブルクリックしてピンを立ててください。'); return; }
-  buildImage(async (dataUrl)=>{
-    const perf = document.getElementById('fPerf').value;
-    const date = document.getElementById('fDate').value;
-    const lines = [];
-    const head = [venueName(), perf].filter(Boolean).join('　');
-    if(head) lines.push(head);
-    if(date) lines.push(date);
-    lines.push('座席メモ：'+currentLabel());
-    const tweetText = lines.join('\n');
-    const file = dataUrlToFile(dataUrl, safeFileStem()+'.png');
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      try{ await navigator.share({files:[file], text:tweetText}); return; }
-      catch(err){}
+function buildImageAsync(mode){
+  return new Promise((resolve)=>buildImage(resolve, mode));
+}
+
+function downloadDataUrl(dataUrl, filename){
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename || (safeFileStem()+'.png');
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+// スマホでは <a download> が効かないブラウザが多いので、共有シート → 新規タブ の順に試す
+async function saveImage(dataUrl, filename){
+  const file = dataUrlToFile(dataUrl, filename);
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file], title:filename});
+      return;
+    }catch(err){
+      if(err && err.name === 'AbortError') return;  // 利用者がキャンセルしただけ
     }
-    downloadDataUrl(dataUrl, safeFileStem()+'.png');
-    const url = 'https://twitter.com/intent/tweet?text='+encodeURIComponent(tweetText);
-    window.open(url, '_blank');
-  }, 'full');
+  }
+  try{
+    downloadDataUrl(dataUrl, filename);
+  }catch(err){
+    const w = window.open();
+    if(w){
+      w.document.write('<img src="'+dataUrl+'" style="max-width:100%">');
+      w.document.title = filename;
+    } else {
+      alert('画像を保存できませんでした。画面を長押しして保存してください。');
+    }
+  }
+}
+
+function requirePin(){
+  if(!selected){
+    alert('先に座席表をダブルタップ（PCはダブルクリック）してピンを立ててください。');
+    return false;
+  }
+  return true;
+}
+
+function withBusy(btn, fn){
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = '処理中…';
+  Promise.resolve()
+    .then(fn)
+    .catch((e)=>{ console.error(e); alert('画像の作成に失敗しました。'); })
+    .finally(()=>{ btn.disabled = false; btn.textContent = label; });
+}
+
+document.getElementById('saveFullBtn').addEventListener('click', (e)=>{
+  if(!requirePin()) return;
+  withBusy(e.currentTarget, async ()=>{
+    const d = await buildImageAsync('full');
+    await saveImage(d, safeFileStem()+'.png');
+  });
+});
+
+document.getElementById('saveViewBtn').addEventListener('click', (e)=>{
+  if(!requirePin()) return;
+  withBusy(e.currentTarget, async ()=>{
+    const d = await buildImageAsync('view');
+    await saveImage(d, safeFileStem()+'-zoom.png');
+  });
+});
+
+function tweetText(){
+  const perf = document.getElementById('fPerf').value;
+  const date = document.getElementById('fDate').value;
+  const lines = [];
+  const head = [venueName(), perf].filter(Boolean).join('　');
+  if(head) lines.push(head);
+  if(date) lines.push(date);
+  lines.push('座席メモ：'+currentLabel());
+  return lines.join('\n');
+}
+
+document.getElementById('postXBtn').addEventListener('click', (e)=>{
+  if(!requirePin()) return;
+  withBusy(e.currentTarget, async ()=>{
+    const text = tweetText();
+    // 全体図と表示範囲の2枚を用意する
+    const fullUrl = await buildImageAsync('full');
+    const viewUrl = await buildImageAsync('view');
+    const files = [
+      dataUrlToFile(fullUrl, safeFileStem()+'.png'),
+      dataUrlToFile(viewUrl, safeFileStem()+'-zoom.png')
+    ];
+
+    // 共有シートが2枚まとめて扱えるなら、そのままXに渡せる
+    if(navigator.canShare && navigator.canShare({files})){
+      try{ await navigator.share({files, text}); return; }
+      catch(err){ if(err && err.name === 'AbortError') return; }
+    }
+    // 1枚ずつなら対応している場合
+    if(navigator.canShare && navigator.canShare({files:[files[0]]})){
+      try{
+        await navigator.share({files:[files[0]], text});
+        alert('もう1枚（表示範囲の画像）を続けて共有します。Xの投稿画面に追加してください。');
+        await navigator.share({files:[files[1]]});
+        return;
+      }catch(err){ if(err && err.name === 'AbortError') return; }
+    }
+    // PCなど: 2枚ダウンロードしてから投稿画面を開く
+    downloadDataUrl(fullUrl, safeFileStem()+'.png');
+    setTimeout(()=>downloadDataUrl(viewUrl, safeFileStem()+'-zoom.png'), 600);
+    setTimeout(()=>{
+      window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(text), '_blank');
+    }, 1200);
+  });
 });
 
 // ---- PWA: Service Worker 登録 ----

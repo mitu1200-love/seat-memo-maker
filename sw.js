@@ -1,7 +1,7 @@
 // 座席連絡 - Service Worker
 // アプリを更新したときは CACHE_VERSION の数字を上げてください。
 // 古いキャッシュが自動で削除され、利用者に新しい版が届きます。
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `seat-contact-${CACHE_VERSION}`;
 
 // 相対パスで登録するので、GitHub Pages のサブディレクトリでもそのまま動きます。
